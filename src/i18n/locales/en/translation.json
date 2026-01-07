@@ -18,6 +18,8 @@
     "recommended": "Recommended",
     "download": "Download",
     "downloading": "Downloading...",
+    "useCloudApi": "Use Cloud API Instead",
+    "useCloudApiDescription": "Skip downloading - use OpenAI, Groq, or other APIs",
     "modelCard": {
       "accuracy": "accuracy",
       "speed": "speed"
@@ -98,9 +100,30 @@
     "modelError": "Model Error",
     "modelUnloaded": "Model Unloaded",
     "noModelDownloadRequired": "No Model - Download Required",
-    "deleteModel": "Delete {{modelName}}"
+    "deleteModel": "Delete {{modelName}}",
+    "cloudProvider": "{{provider}}"
   },
   "settings": {
+    "transcription": {
+      "title": "Transcription",
+      "provider": {
+        "title": "Provider",
+        "description": "Select how transcription is performed. Local models run on your device, while API providers use cloud services."
+      },
+      "baseUrl": {
+        "title": "Base URL",
+        "description": "API endpoint URL for the custom transcription provider."
+      },
+      "apiKey": {
+        "title": "API Key",
+        "description": "Your API key for the selected transcription provider.",
+        "placeholder": "Enter your API key"
+      },
+      "apiModel": {
+        "title": "Model",
+        "description": "The model to use for transcription (e.g., whisper-1 for OpenAI)."
+      }
+    },
     "general": {
       "title": "General",
       "shortcut": {

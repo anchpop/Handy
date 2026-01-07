@@ -1,6 +1,7 @@
 use crate::audio_toolkit::apply_custom_words;
 use crate::managers::model::{EngineType, ModelManager};
-use crate::settings::{get_settings, ModelUnloadTimeout};
+use crate::openai_whisper;
+use crate::settings::{get_settings, ModelUnloadTimeout, TranscriptionProviderConfig};
 use anyhow::Result;
 use log::{debug, error, info, warn};
 use serde::Serialize;
@@ -361,6 +362,107 @@ impl TranscriptionManager {
             return Ok(String::new());
         }
 
+        // Get current settings for configuration
+        let settings = get_settings(&self.app_handle);
+
+        // Route to appropriate transcription method based on config
+        let transcription_text = match &settings.transcription_config {
+            TranscriptionProviderConfig::LocalProvider(_) => {
+                self.transcribe_with_local_model(audio, &settings)?
+            }
+            TranscriptionProviderConfig::CloudProvider(cloud_config) => {
+                self.transcribe_with_api(audio, cloud_config, &settings)?
+            }
+        };
+
+        // Apply word correction if custom words are configured
+        let corrected_result = if !settings.custom_words.is_empty() {
+            apply_custom_words(
+                &transcription_text,
+                &settings.custom_words,
+                settings.word_correction_threshold,
+            )
+        } else {
+            transcription_text
+        };
+
+        let et = std::time::Instant::now();
+        let translation_note = if settings.translate_to_english {
+            " (translated)"
+        } else {
+            ""
+        };
+        info!(
+            "Transcription completed in {}ms{}",
+            (et - st).as_millis(),
+            translation_note
+        );
+
+        let final_result = corrected_result.trim().to_string();
+
+        if final_result.is_empty() {
+            info!("Transcription result is empty");
+        } else {
+            info!("Transcription result: {}", final_result);
+        }
+
+        // Only unload for local model
+        if matches!(settings.transcription_config, TranscriptionProviderConfig::LocalProvider(_)) {
+            self.maybe_unload_immediately("transcription");
+        }
+
+        Ok(final_result)
+    }
+
+    /// Transcribe using an OpenAI-compatible API
+    fn transcribe_with_api(
+        &self,
+        audio: Vec<f32>,
+        cloud_config: &crate::settings::CloudProviderConfig,
+        settings: &crate::settings::AppSettings,
+    ) -> Result<String> {
+        debug!(
+            "Transcribing with cloud provider: {:?}",
+            cloud_config.provider
+        );
+
+        // Normalize language for API (convert zh-Hans/zh-Hant to zh)
+        let language = if settings.selected_language == "auto" {
+            None
+        } else {
+            let normalized = if settings.selected_language == "zh-Hans"
+                || settings.selected_language == "zh-Hant"
+            {
+                "zh".to_string()
+            } else {
+                settings.selected_language.clone()
+            };
+            Some(normalized)
+        };
+
+        // Make the API call using tokio runtime
+        let result = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                openai_whisper::transcribe_with_api(
+                    audio,
+                    &cloud_config.api_key,
+                    &cloud_config.base_url,
+                    &cloud_config.model,
+                    language.as_deref(),
+                )
+                .await
+            })
+        });
+
+        result.map_err(|e| anyhow::anyhow!("API transcription failed: {}", e))
+    }
+
+    /// Transcribe using a local model
+    fn transcribe_with_local_model(
+        &self,
+        audio: Vec<f32>,
+        settings: &crate::settings::AppSettings,
+    ) -> Result<String> {
         // Check if model is loaded, if not try to load it
         {
             // If the model is loading, wait for it to complete.
@@ -374,9 +476,6 @@ impl TranscriptionManager {
                 return Err(anyhow::anyhow!("Model is not loaded for transcription."));
             }
         }
-
-        // Get current settings for configuration
-        let settings = get_settings(&self.app_handle);
 
         // Perform transcription with the appropriate engine
         let result = {
@@ -429,40 +528,7 @@ impl TranscriptionManager {
             }
         };
 
-        // Apply word correction if custom words are configured
-        let corrected_result = if !settings.custom_words.is_empty() {
-            apply_custom_words(
-                &result.text,
-                &settings.custom_words,
-                settings.word_correction_threshold,
-            )
-        } else {
-            result.text
-        };
-
-        let et = std::time::Instant::now();
-        let translation_note = if settings.translate_to_english {
-            " (translated)"
-        } else {
-            ""
-        };
-        info!(
-            "Transcription completed in {}ms{}",
-            (et - st).as_millis(),
-            translation_note
-        );
-
-        let final_result = corrected_result.trim().to_string();
-
-        if final_result.is_empty() {
-            info!("Transcription result is empty");
-        } else {
-            info!("Transcription result: {}", final_result);
-        }
-
-        self.maybe_unload_immediately("transcription");
-
-        Ok(final_result)
+        Ok(result.text)
     }
 }
 

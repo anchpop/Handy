@@ -75,10 +75,20 @@ function App() {
 
   const checkOnboardingStatus = async () => {
     try {
+      // Check if using cloud API (no model needed)
+      const configResult = await commands.getTranscriptionConfig();
+      if (configResult.status === "ok") {
+        const isUsingCloudApi = configResult.data.type === "CloudProvider";
+        if (isUsingCloudApi) {
+          setOnboardingStep("done");
+          return;
+        }
+      }
+
       // Check if they have any models available
       const result = await commands.hasAnyModelsAvailable();
       if (result.status === "ok") {
-        // If they have models/downloads, they're done. Otherwise start permissions step.
+        // If they have models, they're done. Otherwise start permissions step.
         setOnboardingStep(result.data ? "done" : "accessibility");
       } else {
         setOnboardingStep("accessibility");

@@ -624,6 +624,55 @@ pub fn change_app_language_setting(app: AppHandle, language: String) -> Result<(
     Ok(())
 }
 
+// ============================================================================
+// Transcription Provider Settings
+// ============================================================================
+
+/// Get the current transcription provider configuration
+#[tauri::command]
+#[specta::specta]
+pub fn get_transcription_config(
+    app: AppHandle,
+) -> Result<settings::TranscriptionProviderConfig, String> {
+    let settings = settings::get_settings(&app);
+    Ok(settings.transcription_config)
+}
+
+/// Set the transcription provider configuration
+/// This is type-safe: LocalProvider has no API key field, CloudProvider requires one
+#[tauri::command]
+#[specta::specta]
+pub fn set_transcription_config(
+    app: AppHandle,
+    config: settings::TranscriptionProviderConfig,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.transcription_config = config.clone();
+    settings::write_settings(&app, settings);
+
+    // Emit event to notify frontend of provider change
+    let _ = app.emit(
+        "settings-changed",
+        serde_json::json!({
+            "setting": "transcription_config",
+            "value": config
+        }),
+    );
+
+    Ok(())
+}
+
+/// Get available cloud provider types (for UI dropdowns)
+#[tauri::command]
+#[specta::specta]
+pub fn get_cloud_provider_types() -> Vec<settings::CloudProviderType> {
+    vec![
+        settings::CloudProviderType::OpenAI,
+        settings::CloudProviderType::Groq,
+        settings::CloudProviderType::Custom,
+    ]
+}
+
 /// Validate that a shortcut contains at least one non-modifier key.
 /// The tauri-plugin-global-shortcut library requires at least one main key.
 fn validate_shortcut_string(raw: &str) -> Result<(), String> {
