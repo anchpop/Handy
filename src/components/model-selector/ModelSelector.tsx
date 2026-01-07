@@ -1,11 +1,24 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { commands, type ModelInfo } from "@/bindings";
+import { commands, type ModelInfo, type TranscriptionProviderConfig } from "@/bindings";
 import { getTranslatedModelName } from "../../lib/utils/modelTranslation";
 import ModelStatusButton from "./ModelStatusButton";
 import ModelDropdown from "./ModelDropdown";
 import DownloadProgressDisplay from "./DownloadProgressDisplay";
+
+// Helper to get cloud provider display name
+const getCloudProviderDisplayName = (config: TranscriptionProviderConfig): string => {
+  if (config.type !== "CloudProvider") return "";
+  switch (config.provider) {
+    case "openai":
+      return "OpenAI Whisper API";
+    case "groq":
+      return "Groq Whisper API";
+    case "custom":
+      return "Custom API";
+  }
+};
 
 interface ModelStateEvent {
   event_type: string;
@@ -28,7 +41,8 @@ type ModelStatus =
   | "extracting"
   | "error"
   | "unloaded"
-  | "none";
+  | "none"
+  | "cloud";
 
 interface DownloadStats {
   startTime: number;
@@ -57,12 +71,14 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
   const [extractingModels, setExtractingModels] = useState<Set<string>>(
     new Set(),
   );
+  const [cloudProviderName, setCloudProviderName] = useState<string | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadModels();
     loadCurrentModel();
+    loadTranscriptionProvider();
 
     // Listen for model state changes
     const modelStateUnlisten = listen<ModelStateEvent>(
@@ -223,6 +239,15 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
       setModelStatus("error");
     });
 
+    // Listen for settings changes (e.g., transcription provider change)
+    const settingsChangedUnlisten = listen<{ setting: string; value: unknown }>(
+      "settings-changed",
+      () => {
+        // Reload transcription provider when settings change
+        loadTranscriptionProvider();
+      },
+    );
+
     // Click outside to close dropdown
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -243,6 +268,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
       extractionStartedUnlisten.then((fn) => fn());
       extractionCompletedUnlisten.then((fn) => fn());
       extractionFailedUnlisten.then((fn) => fn());
+      settingsChangedUnlisten.then((fn) => fn());
     };
   }, []);
 
@@ -283,6 +309,24 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
       console.error("Failed to load current model:", err);
       setModelStatus("error");
       setModelError("Failed to check model status");
+    }
+  };
+
+  const loadTranscriptionProvider = async () => {
+    try {
+      const result = await commands.getTranscriptionConfig();
+      if (result.status === "ok") {
+        const config = result.data;
+        if (config.type === "CloudProvider") {
+          setCloudProviderName(getCloudProviderDisplayName(config));
+          setModelStatus("cloud");
+        } else {
+          setCloudProviderName(null);
+          // Don't override status if we're local - let loadCurrentModel handle it
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load transcription provider:", err);
     }
   };
 
@@ -357,6 +401,11 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
           count: modelDownloadProgress.size,
         });
       }
+    }
+
+    // Show cloud provider if using cloud transcription
+    if (modelStatus === "cloud" && cloudProviderName) {
+      return t("modelSelector.cloudProvider", { provider: cloudProviderName });
     }
 
     const currentModel = getCurrentModel();

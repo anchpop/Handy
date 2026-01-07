@@ -103,6 +103,52 @@ pub struct PostProcessProvider {
     pub models_endpoint: Option<String>,
 }
 
+/// Configuration for local model transcription
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct LocalProviderConfig {
+    pub model_id: String,
+}
+
+/// Known cloud provider types
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum CloudProviderType {
+    OpenAI,
+    Groq,
+    Custom,
+}
+
+/// Configuration for cloud-based transcription (OpenAI-compatible APIs)
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct CloudProviderConfig {
+    pub provider: CloudProviderType,
+    pub api_key: String,
+    pub base_url: String,
+    pub model: String,
+}
+
+/// Transcription provider configuration - each variant carries exactly the data it needs
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+#[serde(tag = "type")]
+pub enum TranscriptionProviderConfig {
+    LocalProvider(LocalProviderConfig),
+    CloudProvider(CloudProviderConfig),
+}
+
+impl Default for TranscriptionProviderConfig {
+    fn default() -> Self {
+        Self::LocalProvider(LocalProviderConfig::default())
+    }
+}
+
+impl Default for LocalProviderConfig {
+    fn default() -> Self {
+        Self {
+            model_id: String::new(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum OverlayPosition {
@@ -293,6 +339,9 @@ pub struct AppSettings {
     pub append_trailing_space: bool,
     #[serde(default = "default_app_language")]
     pub app_language: String,
+    /// Transcription provider configuration (local or cloud)
+    #[serde(default)]
+    pub transcription_config: TranscriptionProviderConfig,
 }
 
 fn default_model() -> String {
@@ -581,6 +630,7 @@ pub fn get_default_settings() -> AppSettings {
         mute_while_recording: false,
         append_trailing_space: false,
         app_language: default_app_language(),
+        transcription_config: TranscriptionProviderConfig::default(),
     }
 }
 
@@ -605,6 +655,7 @@ impl AppSettings {
             .iter_mut()
             .find(|provider| provider.id == provider_id)
     }
+
 }
 
 pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
@@ -651,7 +702,8 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
         default_settings
     };
 
-    if ensure_post_process_defaults(&mut settings) {
+    let post_process_changed = ensure_post_process_defaults(&mut settings);
+    if post_process_changed {
         store.set("settings", serde_json::to_value(&settings).unwrap());
     }
 
@@ -675,7 +727,8 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
         default_settings
     };
 
-    if ensure_post_process_defaults(&mut settings) {
+    let post_process_changed = ensure_post_process_defaults(&mut settings);
+    if post_process_changed {
         store.set("settings", serde_json::to_value(&settings).unwrap());
     }
 

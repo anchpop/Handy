@@ -7,7 +7,8 @@ type ModelStatus =
   | "extracting"
   | "error"
   | "unloaded"
-  | "none";
+  | "none"
+  | "cloud";
 
 interface ModelStatusButtonProps {
   status: ModelStatus;
@@ -40,6 +41,8 @@ const ModelStatusButton: React.FC<ModelStatusButtonProps> = ({
         return "bg-mid-gray/60";
       case "none":
         return "bg-red-400";
+      case "cloud":
+        return "bg-blue-400";
       default:
         return "bg-mid-gray/60";
     }

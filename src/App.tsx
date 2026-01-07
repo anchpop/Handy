@@ -51,7 +51,17 @@ function App() {
 
   const checkOnboardingStatus = async () => {
     try {
-      // Always check if they have any models available
+      // Check if using cloud API (no model needed)
+      const configResult = await commands.getTranscriptionConfig();
+      if (configResult.status === "ok") {
+        const isUsingCloudApi = configResult.data.type === "CloudProvider";
+        if (isUsingCloudApi) {
+          setShowOnboarding(false);
+          return;
+        }
+      }
+
+      // Check if they have any models available
       const result = await commands.hasAnyModelsAvailable();
       if (result.status === "ok") {
         setShowOnboarding(!result.data);
