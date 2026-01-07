@@ -1,4 +1,4 @@
-# Contributing to Handy
+s# Contributing to Handy
 
 Thank you for your interest in contributing to Handy! This guide will help you get started with contributing to this open source speech-to-text application.
 

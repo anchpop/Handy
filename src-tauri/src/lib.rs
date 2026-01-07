@@ -9,6 +9,7 @@ mod helpers;
 mod input;
 mod llm_client;
 mod managers;
+mod openai_whisper;
 mod overlay;
 mod settings;
 mod shortcut;
@@ -265,6 +266,9 @@ pub fn run() {
         shortcut::change_append_trailing_space_setting,
         shortcut::change_app_language_setting,
         shortcut::change_update_checks_setting,
+        shortcut::get_transcription_config,
+        shortcut::set_transcription_config,
+        shortcut::get_cloud_provider_types,
         trigger_update_check,
         commands::cancel_operation,
         commands::get_app_dir_path,

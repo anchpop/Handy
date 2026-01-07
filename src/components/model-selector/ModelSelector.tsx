@@ -1,11 +1,24 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { commands, type ModelInfo } from "@/bindings";
+import { commands, type ModelInfo, type TranscriptionProviderConfig } from "@/bindings";
 import { getTranslatedModelName } from "../../lib/utils/modelTranslation";
 import ModelStatusButton from "./ModelStatusButton";
 import ModelDropdown from "./ModelDropdown";
 import DownloadProgressDisplay from "./DownloadProgressDisplay";
+
+// Helper to get cloud provider display name
+const getCloudProviderDisplayName = (config: TranscriptionProviderConfig): string => {
+  if (config.type !== "CloudProvider") return "";
+  switch (config.provider) {
+    case "openai":
+      return "OpenAI Whisper API";
+    case "groq":
+      return "Groq Whisper API";
+    case "custom":
+      return "Custom API";
+  }
+};
 
 interface ModelStateEvent {
   event_type: string;
@@ -21,7 +34,7 @@ interface DownloadProgress {
   percentage: number;
 }
 
-type ModelStatus =
+type LocalModelStatus =
   | "ready"
   | "loading"
   | "downloading"
@@ -29,6 +42,11 @@ type ModelStatus =
   | "error"
   | "unloaded"
   | "none";
+
+// Discriminated union ensures cloud provider name is always present when using cloud
+type TranscriptionState =
+  | { type: "cloud"; providerName: string }
+  | { type: "local"; status: LocalModelStatus; error: string | null };
 
 interface DownloadStats {
   startTime: number;
@@ -45,8 +63,12 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
   const { t } = useTranslation();
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [currentModelId, setCurrentModelId] = useState<string>("");
-  const [modelStatus, setModelStatus] = useState<ModelStatus>("unloaded");
-  const [modelError, setModelError] = useState<string | null>(null);
+  // Single state for transcription source - discriminated union prevents invalid states
+  const [transcriptionState, setTranscriptionState] = useState<TranscriptionState>({
+    type: "local",
+    status: "unloaded",
+    error: null,
+  });
   const [modelDownloadProgress, setModelDownloadProgress] = useState<
     Map<string, DownloadProgress>
   >(new Map());
@@ -61,32 +83,34 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadModels();
-    loadCurrentModel();
+    // Initialize state - run load functions and ensure state is set correctly
+    const initialize = async () => {
+      await loadModels();
+      // Load both config handlers - one of them will set the correct state
+      await loadTranscriptionProvider();
+      await loadCurrentModel();
+    };
+    initialize();
 
     // Listen for model state changes
     const modelStateUnlisten = listen<ModelStateEvent>(
       "model-state-changed",
       (event) => {
-        const { event_type, model_id, model_name, error } = event.payload;
+        const { event_type, model_id, error } = event.payload;
 
         switch (event_type) {
           case "loading_started":
-            setModelStatus("loading");
-            setModelError(null);
+            setTranscriptionState({ type: "local", status: "loading", error: null });
             break;
           case "loading_completed":
-            setModelStatus("ready");
-            setModelError(null);
+            setTranscriptionState({ type: "local", status: "ready", error: null });
             if (model_id) setCurrentModelId(model_id);
             break;
           case "loading_failed":
-            setModelStatus("error");
-            setModelError(error || "Failed to load model");
+            setTranscriptionState({ type: "local", status: "error", error: error || "Failed to load model" });
             break;
           case "unloaded":
-            setModelStatus("unloaded");
-            setModelError(null);
+            setTranscriptionState({ type: "local", status: "unloaded", error: null });
             break;
         }
       },
@@ -102,7 +126,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
           newMap.set(progress.model_id, progress);
           return newMap;
         });
-        setModelStatus("downloading");
+        setTranscriptionState({ type: "local", status: "downloading", error: null });
 
         // Update download stats for speed calculation
         const now = Date.now();
@@ -182,7 +206,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
       (event) => {
         const modelId = event.payload;
         setExtractingModels((prev) => new Set(prev.add(modelId)));
-        setModelStatus("extracting");
+        setTranscriptionState({ type: "local", status: "extracting", error: null });
       },
     );
 
@@ -219,9 +243,17 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
         next.delete(modelId);
         return next;
       });
-      setModelError(`Failed to extract model: ${event.payload.error}`);
-      setModelStatus("error");
+      setTranscriptionState({ type: "local", status: "error", error: `Failed to extract model: ${event.payload.error}` });
     });
+
+    // Listen for settings changes (e.g., transcription provider change)
+    const settingsChangedUnlisten = listen<{ setting: string; value: unknown }>(
+      "settings-changed",
+      () => {
+        // Reload transcription provider when settings change
+        loadTranscriptionProvider();
+      },
+    );
 
     // Click outside to close dropdown
     const handleClickOutside = (event: MouseEvent) => {
@@ -243,6 +275,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
       extractionStartedUnlisten.then((fn) => fn());
       extractionCompletedUnlisten.then((fn) => fn());
       extractionFailedUnlisten.then((fn) => fn());
+      settingsChangedUnlisten.then((fn) => fn());
     };
   }, []);
 
@@ -259,6 +292,12 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
 
   const loadCurrentModel = async () => {
     try {
+      // Check if we're using cloud provider - if so, don't update model status
+      const configResult = await commands.getTranscriptionConfig();
+      if (configResult.status === "ok" && configResult.data.type === "CloudProvider") {
+        return; // Cloud provider handles its own status via loadTranscriptionProvider
+      }
+
       const result = await commands.getCurrentModel();
       if (result.status === "ok") {
         const current = result.data;
@@ -270,56 +309,71 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
           if (statusResult.status === "ok") {
             const transcriptionStatus = statusResult.data;
             if (transcriptionStatus === current) {
-              setModelStatus("ready");
+              setTranscriptionState({ type: "local", status: "ready", error: null });
             } else {
-              setModelStatus("unloaded");
+              setTranscriptionState({ type: "local", status: "unloaded", error: null });
             }
+          } else {
+            // Failed to get status - assume unloaded
+            setTranscriptionState({ type: "local", status: "unloaded", error: null });
           }
         } else {
-          setModelStatus("none");
+          setTranscriptionState({ type: "local", status: "none", error: null });
         }
+      } else {
+        // Failed to get current model - show as none
+        setTranscriptionState({ type: "local", status: "none", error: null });
       }
     } catch (err) {
       console.error("Failed to load current model:", err);
-      setModelStatus("error");
-      setModelError("Failed to check model status");
+      setTranscriptionState({ type: "local", status: "error", error: "Failed to check model status" });
+    }
+  };
+
+  const loadTranscriptionProvider = async () => {
+    try {
+      const result = await commands.getTranscriptionConfig();
+      if (result.status === "ok") {
+        const config = result.data;
+        if (config.type === "CloudProvider") {
+          // Type system ensures we always set providerName when type is "cloud"
+          setTranscriptionState({ type: "cloud", providerName: getCloudProviderDisplayName(config) });
+        }
+        // Don't override state if we're local - let loadCurrentModel handle it
+      }
+    } catch (err) {
+      console.error("Failed to load transcription provider:", err);
     }
   };
 
   const handleModelSelect = async (modelId: string) => {
     try {
       setCurrentModelId(modelId); // Set optimistically so loading text shows correct model
-      setModelError(null);
       setShowModelDropdown(false);
       const result = await commands.setActiveModel(modelId);
       if (result.status === "error") {
         const errorMsg = result.error;
-        setModelError(errorMsg);
-        setModelStatus("error");
+        setTranscriptionState({ type: "local", status: "error", error: errorMsg });
         onError?.(errorMsg);
       }
     } catch (err) {
       const errorMsg = `${err}`;
-      setModelError(errorMsg);
-      setModelStatus("error");
+      setTranscriptionState({ type: "local", status: "error", error: errorMsg });
       onError?.(errorMsg);
     }
   };
 
   const handleModelDownload = async (modelId: string) => {
     try {
-      setModelError(null);
       const result = await commands.downloadModel(modelId);
       if (result.status === "error") {
         const errorMsg = result.error;
-        setModelError(errorMsg);
-        setModelStatus("error");
+        setTranscriptionState({ type: "local", status: "error", error: errorMsg });
         onError?.(errorMsg);
       }
     } catch (err) {
       const errorMsg = `${err}`;
-      setModelError(errorMsg);
-      setModelStatus("error");
+      setTranscriptionState({ type: "local", status: "error", error: errorMsg });
       onError?.(errorMsg);
     }
   };
@@ -359,9 +413,17 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
       }
     }
 
+    // Handle discriminated union - cloud vs local
+    if (transcriptionState.type === "cloud") {
+      // Type narrowing guarantees providerName exists
+      return t("modelSelector.cloudProvider", { provider: transcriptionState.providerName });
+    }
+
+    // Type narrowing: we know it's local from here
+    const { status, error } = transcriptionState;
     const currentModel = getCurrentModel();
 
-    switch (modelStatus) {
+    switch (status) {
       case "ready":
         return currentModel
           ? getTranslatedModelName(currentModel, t)
@@ -379,13 +441,15 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
             })
           : t("modelSelector.extractingGeneric");
       case "error":
-        return modelError || t("modelSelector.modelError");
+        return error || t("modelSelector.modelError");
       case "unloaded":
         return currentModel
           ? getTranslatedModelName(currentModel, t)
           : t("modelSelector.modelUnloaded");
       case "none":
         return t("modelSelector.noModelDownloadRequired");
+      case "downloading":
+        return t("modelSelector.downloadingGeneric");
       default:
         return currentModel
           ? getTranslatedModelName(currentModel, t)
@@ -397,8 +461,13 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
     const result = await commands.deleteModel(modelId);
     if (result.status === "ok") {
       await loadModels();
-      setModelError(null);
     }
+  };
+
+  // Compute status for the button indicator
+  const getButtonStatus = (): "ready" | "loading" | "downloading" | "extracting" | "error" | "unloaded" | "none" | "cloud" => {
+    if (transcriptionState.type === "cloud") return "cloud";
+    return transcriptionState.status;
   };
 
   return (
@@ -406,7 +475,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
       {/* Model Status and Switcher */}
       <div className="relative" ref={dropdownRef}>
         <ModelStatusButton
-          status={modelStatus}
+          status={getButtonStatus()}
           displayText={getModelDisplayText()}
           isDropdownOpen={showModelDropdown}
           onClick={() => setShowModelDropdown(!showModelDropdown)}
