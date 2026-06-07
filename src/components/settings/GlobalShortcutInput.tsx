@@ -1,26 +1,25 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { type } from "@tauri-apps/plugin-os";
 import {
   getKeyName,
   formatKeyCombination,
   normalizeKey,
-  type OSType,
 } from "../../lib/utils/keyboard";
 import { ResetButton } from "../ui/ResetButton";
 import { SettingContainer } from "../ui/SettingContainer";
 import { useSettings } from "../../hooks/useSettings";
+import { useOsType } from "../../hooks/useOsType";
 import { commands } from "@/bindings";
 import { toast } from "sonner";
 
-interface HandyShortcutProps {
+interface GlobalShortcutInputProps {
   descriptionMode?: "inline" | "tooltip";
   grouped?: boolean;
   shortcutId: string;
   disabled?: boolean;
 }
 
-export const HandyShortcut: React.FC<HandyShortcutProps> = ({
+export const GlobalShortcutInput: React.FC<GlobalShortcutInputProps> = ({
   descriptionMode = "tooltip",
   grouped = false,
   shortcutId,
@@ -35,41 +34,10 @@ export const HandyShortcut: React.FC<HandyShortcutProps> = ({
     null,
   );
   const [originalBinding, setOriginalBinding] = useState<string>("");
-  const [osType, setOsType] = useState<OSType>("unknown");
   const shortcutRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const osType = useOsType();
 
   const bindings = getSetting("bindings") || {};
-
-  // Detect and store OS type
-  useEffect(() => {
-    const detectOsType = async () => {
-      try {
-        const detectedType = type();
-        let normalizedType: OSType;
-
-        switch (detectedType) {
-          case "macos":
-            normalizedType = "macos";
-            break;
-          case "windows":
-            normalizedType = "windows";
-            break;
-          case "linux":
-            normalizedType = "linux";
-            break;
-          default:
-            normalizedType = "unknown";
-        }
-
-        setOsType(normalizedType);
-      } catch (error) {
-        console.error("Error detecting OS type:", error);
-        setOsType("unknown");
-      }
-    };
-
-    detectOsType();
-  }, []);
 
   useEffect(() => {
     // Only add event listeners when we're in editing mode
@@ -81,24 +49,6 @@ export const HandyShortcut: React.FC<HandyShortcutProps> = ({
     const handleKeyDown = async (e: KeyboardEvent) => {
       if (cleanup) return;
       if (e.repeat) return; // ignore auto-repeat
-      if (e.key === "Escape") {
-        // Cancel recording and restore original binding
-        if (editingShortcutId && originalBinding) {
-          try {
-            await updateBinding(editingShortcutId, originalBinding);
-          } catch (error) {
-            console.error("Failed to restore original binding:", error);
-            toast.error(t("settings.general.shortcut.errors.restore"));
-          }
-        } else if (editingShortcutId) {
-          await commands.resumeBinding(editingShortcutId).catch(console.error);
-        }
-        setEditingShortcutId(null);
-        setKeyPressed([]);
-        setRecordedKeys([]);
-        setOriginalBinding("");
-        return;
-      }
       e.preventDefault();
 
       // Get the key with OS-specific naming and normalize it
@@ -325,13 +275,13 @@ export const HandyShortcut: React.FC<HandyShortcutProps> = ({
         {editingShortcutId === shortcutId ? (
           <div
             ref={(ref) => setShortcutRef(shortcutId, ref)}
-            className="px-2 py-1 text-sm font-semibold border border-logo-primary bg-logo-primary/30 rounded min-w-[120px] text-center"
+            className="px-2 py-1 text-sm font-semibold border border-logo-primary bg-logo-primary/30 rounded-md"
           >
             {formatCurrentKeys()}
           </div>
         ) : (
           <div
-            className="px-2 py-1 text-sm font-semibold bg-mid-gray/10 border border-mid-gray/80 hover:bg-logo-primary/10 rounded cursor-pointer hover:border-logo-primary"
+            className="px-2 py-1 text-sm font-semibold bg-mid-gray/10 border border-mid-gray/80 hover:bg-logo-primary/10 rounded-md cursor-pointer hover:border-logo-primary"
             onClick={() => startRecording(shortcutId)}
           >
             {formatKeyCombination(binding.current_binding, osType)}

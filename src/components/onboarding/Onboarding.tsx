@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { commands, type ModelInfo, type CloudProviderType } from "@/bindings";
+import type { ModelCardStatus } from "./ModelCard";
 import ModelCard from "./ModelCard";
 import HandyTextLogo from "../icons/HandyTextLogo";
+import { useModelStore } from "../../stores/modelStore";
 import { Cloud, HardDrive, ChevronDown, Zap } from "lucide-react";
 import { Input } from "../ui/Input";
 
@@ -45,51 +48,75 @@ const cloudProviders: {
 
 const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
   const { t } = useTranslation();
-  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [downloading, setDownloading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedSection, setExpandedSection] = useState<ExpandedSection>("local");
+  const {
+    models,
+    downloadModel,
+    selectModel,
+    downloadingModels,
+    verifyingModels,
+    extractingModels,
+    downloadProgress,
+    downloadStats,
+  } = useModelStore();
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [expandedSection, setExpandedSection] =
+    useState<ExpandedSection>("local");
 
   // Cloud provider state
-  const [selectedCloudProvider, setSelectedCloudProvider] = useState<CloudProviderType | null>(null);
+  const [selectedCloudProvider, setSelectedCloudProvider] =
+    useState<CloudProviderType | null>(null);
   const [apiKey, setApiKey] = useState("");
-  const [customBaseUrl, setCustomBaseUrl] = useState("http://localhost:8080/v1");
+  const [customBaseUrl, setCustomBaseUrl] = useState(
+    "http://localhost:8080/v1",
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  const isDownloading = selectedModelId !== null;
+
+  // Watch for the selected model to finish downloading + verifying + extracting
   useEffect(() => {
-    loadModels();
-  }, []);
+    if (!selectedModelId) return;
 
-  const loadModels = async () => {
-    try {
-      const result = await commands.getAvailableModels();
-      if (result.status === "ok") {
-        setAvailableModels(result.data.filter((m) => !m.is_downloaded));
-      } else {
-        setError(t("onboarding.errors.loadModels"));
-      }
-    } catch (err) {
-      console.error("Failed to load models:", err);
-      setError(t("onboarding.errors.loadModels"));
+    const model = models.find((m) => m.id === selectedModelId);
+    const stillDownloading = selectedModelId in downloadingModels;
+    const stillVerifying = selectedModelId in verifyingModels;
+    const stillExtracting = selectedModelId in extractingModels;
+
+    if (
+      model?.is_downloaded &&
+      !stillDownloading &&
+      !stillVerifying &&
+      !stillExtracting
+    ) {
+      // Model is ready — select it and transition
+      selectModel(selectedModelId).then((success) => {
+        if (success) {
+          onModelSelected();
+        } else {
+          toast.error(t("onboarding.errors.selectModel"));
+          setSelectedModelId(null);
+        }
+      });
     }
-  };
+  }, [
+    selectedModelId,
+    models,
+    downloadingModels,
+    verifyingModels,
+    extractingModels,
+    selectModel,
+    onModelSelected,
+  ]);
 
   const handleDownloadModel = async (modelId: string) => {
-    setDownloading(true);
-    setError(null);
-    onModelSelected();
+    setSelectedModelId(modelId);
 
-    try {
-      const result = await commands.downloadModel(modelId);
-      if (result.status === "error") {
-        console.error("Download failed:", result.error);
-        setError(t("onboarding.errors.downloadModel", { error: result.error }));
-        setDownloading(false);
-      }
-    } catch (err) {
-      console.error("Download failed:", err);
-      setError(t("onboarding.errors.downloadModel", { error: String(err) }));
-      setDownloading(false);
+    // Error toast is handled centrally by the model-download-failed event listener
+    // in modelStore — no toast here to avoid duplicates.
+    const success = await downloadModel(modelId);
+    if (!success) {
+      setSelectedModelId(null);
     }
   };
 
@@ -115,7 +142,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
         type: "CloudProvider",
         provider: selectedCloudProvider,
         api_key: apiKey,
-        base_url: selectedCloudProvider === "custom" ? customBaseUrl : provider.baseUrl,
+        base_url:
+          selectedCloudProvider === "custom" ? customBaseUrl : provider.baseUrl,
         model: provider.defaultModel,
       });
       onModelSelected();
@@ -135,14 +163,30 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
     }
   };
 
-  const getRecommendedBadge = (modelId: string): boolean => {
-    return modelId === "parakeet-tdt-0.6b-v3";
+  const getModelStatus = (modelId: string): ModelCardStatus => {
+    if (modelId in extractingModels) return "extracting";
+    if (modelId in verifyingModels) return "verifying";
+    if (modelId in downloadingModels) return "downloading";
+    return "downloadable";
   };
 
-  const recommendedModels = availableModels.filter((m) => getRecommendedBadge(m.id));
+  const getModelDownloadProgress = (modelId: string): number | undefined => {
+    return downloadProgress[modelId]?.percentage;
+  };
+
+  const getModelDownloadSpeed = (modelId: string): number | undefined => {
+    return downloadStats[modelId]?.speed;
+  };
+
+  const availableModels = models.filter((m: ModelInfo) => !m.is_downloaded);
+  const recommendedModels = availableModels.filter(
+    (m: ModelInfo) => m.is_recommended,
+  );
   const otherModels = availableModels
-    .filter((m) => !getRecommendedBadge(m.id))
-    .sort((a, b) => Number(a.size_mb) - Number(b.size_mb));
+    .filter((m: ModelInfo) => !m.is_recommended)
+    .sort(
+      (a: ModelInfo, b: ModelInfo) => Number(a.size_mb) - Number(b.size_mb),
+    );
 
   return (
     <div className="h-screen w-screen flex flex-col p-6 gap-4 inset-0">
@@ -173,7 +217,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
                 </div>
                 <div className="text-left">
                   <p className="font-semibold text-text">Local Models</p>
-                  <p className="text-xs text-text/60">Download and run on your device</p>
+                  <p className="text-xs text-text/60">
+                    Download and run on your device
+                  </p>
                 </div>
               </div>
               <ChevronDown
@@ -185,25 +231,35 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
 
             <div
               className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                expandedSection === "local" ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
+                expandedSection === "local"
+                  ? "max-h-[600px] opacity-100"
+                  : "max-h-0 opacity-0"
               }`}
             >
               <div className="p-4 pt-0 flex flex-col gap-3">
-                {recommendedModels.map((model) => (
+                {recommendedModels.map((model: ModelInfo) => (
                   <ModelCard
                     key={model.id}
                     model={model}
                     variant="featured"
-                    disabled={downloading}
+                    status={getModelStatus(model.id)}
+                    disabled={isDownloading}
                     onSelect={handleDownloadModel}
+                    onDownload={handleDownloadModel}
+                    downloadProgress={getModelDownloadProgress(model.id)}
+                    downloadSpeed={getModelDownloadSpeed(model.id)}
                   />
                 ))}
-                {otherModels.map((model) => (
+                {otherModels.map((model: ModelInfo) => (
                   <ModelCard
                     key={model.id}
                     model={model}
-                    disabled={downloading}
+                    status={getModelStatus(model.id)}
+                    disabled={isDownloading}
                     onSelect={handleDownloadModel}
+                    onDownload={handleDownloadModel}
+                    downloadProgress={getModelDownloadProgress(model.id)}
+                    downloadSpeed={getModelDownloadSpeed(model.id)}
                   />
                 ))}
               </div>
@@ -234,7 +290,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
 
             <div
               className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                expandedSection === "cloud" ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+                expandedSection === "cloud"
+                  ? "max-h-[500px] opacity-100"
+                  : "max-h-0 opacity-0"
               }`}
             >
               <div className="p-4 pt-0 flex flex-col gap-2">
@@ -270,7 +328,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-text/60">{provider.description}</p>
+                      <p className="text-xs text-text/60">
+                        {provider.description}
+                      </p>
                     </div>
                   </button>
                 ))}
@@ -295,7 +355,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
                     )}
                     <div>
                       <label className="block text-xs font-medium text-text/70 mb-1.5">
-                        API Key {selectedCloudProvider !== "custom" && <span className="text-text/40">(required)</span>}
+                        API Key{" "}
+                        {selectedCloudProvider !== "custom" && (
+                          <span className="text-text/40">(required)</span>
+                        )}
                       </label>
                       <Input
                         type="password"
@@ -308,7 +371,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
                     </div>
                     <button
                       onClick={handleCloudSubmit}
-                      disabled={isSubmitting || (!apiKey && selectedCloudProvider !== "custom")}
+                      disabled={
+                        isSubmitting ||
+                        (!apiKey && selectedCloudProvider !== "custom")
+                      }
                       className="w-full py-2.5 px-4 rounded-lg bg-logo-primary hover:bg-logo-primary/90 disabled:bg-mid-gray/30 disabled:cursor-not-allowed text-white font-medium transition-colors"
                     >
                       {isSubmitting ? "Setting up..." : "Continue"}

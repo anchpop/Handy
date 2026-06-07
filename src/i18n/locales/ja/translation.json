@@ -2,11 +2,15 @@
   "tray": {
     "settings": "設定...",
     "checkUpdates": "アップデートを確認...",
+    "copyLastTranscript": "最新の文字起こしをコピー",
+    "unloadModel": "モデルをアンロード",
+    "model": "モデル",
     "quit": "終了",
     "cancel": "キャンセル"
   },
   "sidebar": {
     "general": "一般",
+    "models": "モデル",
     "advanced": "詳細設定",
     "postProcessing": "後処理",
     "history": "履歴",
@@ -18,6 +22,8 @@
     "recommended": "おすすめ",
     "download": "ダウンロード",
     "downloading": "ダウンロード中...",
+    "customModelDescription": "公式サポート対象外",
+    "downloadFailed": "ダウンロードに失敗しました。もう一度お試しください。",
     "modelCard": {
       "accuracy": "精度",
       "speed": "速度"
@@ -49,7 +55,43 @@
       },
       "moonshine-base": {
         "name": "Moonshine Base",
-        "description": "Very fast, English only. Handles accents well."
+        "description": "非常に高速、英語のみ。アクセントにも対応。"
+      },
+      "moonshine-tiny-streaming-en": {
+        "name": "Moonshine V2 Tiny",
+        "description": "超高速、英語のみ"
+      },
+      "moonshine-small-streaming-en": {
+        "name": "Moonshine V2 Small",
+        "description": "高速、英語のみ。速度と精度のバランスが良い。"
+      },
+      "moonshine-medium-streaming-en": {
+        "name": "Moonshine V2 Medium",
+        "description": "英語のみ。高品質。"
+      },
+      "breeze-asr": {
+        "name": "Breeze ASR",
+        "description": "台湾華語に最適化。コードスイッチングに対応。"
+      },
+      "sense-voice-int8": {
+        "name": "SenseVoice",
+        "description": "非常に高速。中国語、英語、日本語、韓国語、広東語。"
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "ロシア語音声認識。高速かつ高精度。"
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "非常に高速。英語、ドイツ語、スペイン語、フランス語。翻訳対応。"
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "高精度な多言語対応。25のヨーロッパ言語。翻訳対応。"
+      },
+      "cohere-int8": {
+        "name": "Cohere",
+        "description": "大型で低速ですが、非常に高精度な多言語モデル。"
       }
     },
     "errors": {
@@ -70,19 +112,20 @@
       "grant": "権限を許可",
       "granted": "許可済み",
       "waiting": "待機中...",
-      "allGranted": "準備完了！"
+      "allGranted": "準備完了！",
+      "errors": {
+        "checkFailed": "権限の確認に失敗しました。もう一度お試しください。",
+        "requestFailed": "権限のリクエストに失敗しました。もう一度お試しください。"
+      }
     }
   },
   "modelSelector": {
-    "welcome": "Handyへようこそ！",
-    "downloadPrompt": "文字起こしを開始するには、下からモデルをダウンロードしてください。",
-    "availableModels": "利用可能なモデル",
-    "downloadModels": "モデルをダウンロード",
-    "chooseModel": "モデルを選択",
+    "custom": "カスタム",
     "active": "アクティブ",
-    "download": "ダウンロード",
-    "downloadSize": "ダウンロードサイズ",
+    "switching": "切替中...",
     "noModelsAvailable": "利用可能なモデルがありません",
+    "verifying": "{{modelName}}を検証中...",
+    "verifyingGeneric": "検証中...",
     "extracting": "{{modelName}}を展開中...",
     "extractingMultiple": "{{count}}個のモデルを展開中...",
     "extractingGeneric": "展開中...",
@@ -94,9 +137,42 @@
     "modelError": "モデルエラー",
     "modelUnloaded": "モデルがアンロードされました",
     "noModelDownloadRequired": "モデルなし - ダウンロードが必要",
-    "deleteModel": "{{modelName}}を削除"
+    "deleteModel": "{{modelName}}を削除",
+    "downloadSpeed": "{{speed}} MB/s",
+    "capabilities": {
+      "languageSelection": "複数の入力言語をサポート",
+      "multiLanguage": "多言語",
+      "translation": "英語への翻訳が可能",
+      "translate": "英語に翻訳",
+      "singleLanguage": "この言語のみ対応",
+      "languageOnly": "{{language}}のみ"
+    },
+    "cancel": "キャンセル",
+    "cancelDownload": "ダウンロードをキャンセル"
   },
   "settings": {
+    "modelSettings": {
+      "title": "{{model}} 設定",
+      "noSettingsNeeded": "このモデルは設定不要で自動的に動作します。"
+    },
+    "models": {
+      "title": "転写モデル",
+      "description": "転写モデルを選択するか、追加のモデルをダウンロードします。異なるモデルは精度と速度のレベルが異なります。",
+      "downloaded": "ダウンロード済み",
+      "available": "ダウンロード可能",
+      "deleteConfirm": "{{modelName}}を削除してもよろしいですか？再度使用するにはダウンロードが必要です。",
+      "deleteActiveConfirm": "{{modelName}}は現在使用中のモデルです。削除すると、新しいモデルを選択するまで文字起こしが停止します。本当に削除しますか？",
+      "deleteTitle": "モデルを削除",
+      "filters": {
+        "all": "すべて",
+        "multiLanguage": "多言語",
+        "translation": "翻訳",
+        "allLanguages": "すべての言語"
+      },
+      "noModelsMatch": "このフィルターに一致するモデルがありません。",
+      "yourModels": "ダウンロード済みモデル",
+      "availableModels": "ダウンロード可能"
+    },
     "general": {
       "title": "一般",
       "shortcut": {
@@ -108,12 +184,16 @@
         "pressKeys": "キーを押してください...",
         "bindings": {
           "transcribe": {
-            "name": "文字起こし",
-            "description": "音声をテキストに変換します。"
+            "name": "文字起こしショートカット",
+            "description": "音声を録音して文字起こしするためのキーボードショートカット。"
           },
           "cancel": {
-            "name": "キャンセル",
-            "description": "現在の録音をキャンセルします。"
+            "name": "キャンセルショートカット",
+            "description": "現在の録音をキャンセルするためのキーボードショートカット。"
+          },
+          "transcribe_with_post_process": {
+            "name": "後処理ホットキー",
+            "description": "オプション：文字起こしに常にAI後処理を適用する専用ホットキー。"
           }
         },
         "errors": {
@@ -160,6 +240,36 @@
     },
     "advanced": {
       "title": "詳細設定",
+      "groups": {
+        "app": "アプリ",
+        "output": "出力",
+        "transcription": "文字起こし",
+        "history": "履歴",
+        "experimental": "実験的"
+      },
+      "experimentalToggle": {
+        "label": "実験的機能",
+        "description": "まだ開発中の実験的機能を有効にします。"
+      },
+      "lazyStreamClose": {
+        "label": "文字起こし間でマイクを開いたままにする",
+        "description": "録音停止後30秒間マイクストリームを開いたままにし、連続した文字起こしの遅延を軽減します。Bluetooth音声品質に影響する場合があります。"
+      },
+      "acceleration": {
+        "whisper": {
+          "title": "Whisper アクセラレーション",
+          "description": "Whisper モデルのハードウェアアクセラレーション。自動モードでは利用可能な場合 GPU を使用します（macOS では Metal、Windows/Linux では Vulkan）。"
+        },
+        "ort": {
+          "title": "ONNX アクセラレーション",
+          "description": "ONNX モデルのハードウェアアクセラレーション（Parakeet、Canary、Moonshine など）。Windows の DirectML は実験的です。モデルの文字起こしに失敗する場合があります。"
+        },
+        "gpuDevice": {
+          "title": "GPUデバイス",
+          "description": "Whisper推論に使用するGPUを選択します。自動は専用GPUを選択します。",
+          "auto": "自動"
+        }
+      },
       "startHidden": {
         "label": "非表示で起動",
         "description": "ウィンドウを開かずにシステムトレイに起動。"
@@ -167,6 +277,10 @@
       "autostart": {
         "label": "起動時に実行",
         "description": "コンピューターにログインしたときにHandyを自動的に起動。"
+      },
+      "showTrayIcon": {
+        "label": "トレイアイコンを表示",
+        "description": "システムトレイにHandyのアイコンを表示します。"
       },
       "overlay": {
         "title": "オーバーレイ位置",
@@ -185,7 +299,16 @@
           "clipboardCtrlShiftV": "クリップボード (Ctrl+Shift+V)",
           "clipboardShiftInsert": "クリップボード (Shift+Insert)",
           "direct": "直接",
-          "none": "なし"
+          "none": "なし",
+          "externalScript": "外部スクリプト"
+        },
+        "externalScriptPlaceholder": "/path/to/your/script.sh"
+      },
+      "typingTool": {
+        "title": "タイピングツール",
+        "description": "直接貼り付け方式で使用する Linux のタイピングツールを選択します。Auto は自動的に最適なツールを検出して使用します。",
+        "options": {
+          "auto": "Auto（推奨）"
         }
       },
       "clipboardHandling": {
@@ -194,6 +317,17 @@
         "options": {
           "dontModify": "クリップボードを変更しない",
           "copyToClipboard": "クリップボードにコピー"
+        }
+      },
+      "autoSubmit": {
+        "title": "自動送信",
+        "description": "テキスト挿入後に選択したキーの組み合わせを自動的に送信します。macOSではCmd+Enter、Windows/LinuxではSuper+Enterが適用されます。",
+        "options": {
+          "off": "オフ",
+          "enter": "Enter",
+          "cmdEnter": "Cmd+Enter",
+          "superEnter": "Super+Enter",
+          "ctrlEnter": "Ctrl+Enter"
         }
       },
       "translateToEnglish": {
@@ -212,7 +346,7 @@
           "min10": "10分後",
           "min15": "15分後",
           "hour1": "1時間後",
-          "sec5": "5秒後（デバッグ）"
+          "sec15": "15秒後（デバッグ）"
         }
       },
       "customWords": {
@@ -220,12 +354,15 @@
         "description": "よく誤認識または誤入力される単語を追加します。システムは自動的に類似した発音の単語をリストに合わせて修正します。",
         "placeholder": "単語を追加",
         "add": "追加",
-        "remove": "{{word}}を削除"
+        "remove": "{{word}}を削除",
+        "duplicate": "「{{word}}」は既に存在します"
       }
     },
     "postProcessing": {
       "title": "後処理",
-      "disabledNotice": "後処理は現在無効です。設定するにはデバッグ設定で有効にしてください。",
+      "hotkey": {
+        "title": "ホットキー"
+      },
       "api": {
         "title": "API（OpenAI互換）",
         "provider": {
@@ -290,7 +427,11 @@
       "save": "文字起こしを保存",
       "unsave": "保存から削除",
       "delete": "エントリーを削除",
-      "deleteError": "エントリーの削除に失敗しました。もう一度お試しください。"
+      "deleteError": "エントリーの削除に失敗しました。もう一度お試しください。",
+      "retranscribe": "再文字起こし",
+      "retranscribeError": "再文字起こしに失敗しました。もう一度お試しください。",
+      "transcribing": "文字起こし中...",
+      "transcriptionFailed": "文字起こしに失敗しました。リトライアイコンを使用して再文字起こしできます。"
     },
     "debug": {
       "title": "デバッグ",
@@ -349,10 +490,23 @@
         "label": "末尾にスペースを追加",
         "description": "貼り付けた文字起こしの後にスペースを追加"
       },
+      "keyboardImplementation": {
+        "title": "キーボード実装",
+        "description": "キーボードショートカットのバックエンドを選択してください。",
+        "bindingsReset": "キーボードショートカットに互換性がなかったため、デフォルトにリセットされました"
+      },
       "paths": {
         "appData": "アプリデータ:",
         "models": "モデル:",
         "settings": "設定:"
+      },
+      "pasteDelay": {
+        "title": "貼り付け遅延",
+        "description": "貼り付けキー送信前の遅延（ミリ秒）。間違ったテキストが貼り付けられる場合は増やしてください。"
+      },
+      "recordingBuffer": {
+        "title": "追加録音バッファ",
+        "description": "キーを離した後に録音を続ける追加時間（ミリ秒）。末尾の音声を捕捉するため。0 = 追加バッファなし。"
       }
     },
     "about": {
@@ -397,7 +551,10 @@
     "downloading": "ダウンロード中... {{progress}}%",
     "installing": "インストール中...",
     "preparing": "準備中...",
-    "checkForUpdates": "アップデートを確認"
+    "checkForUpdates": "アップデートを確認",
+    "portableUpdateTitle": "Manual update required",
+    "portableUpdateMessage": "Portable installs cannot be updated automatically. To update: download the latest NSIS installer from GitHub Releases, install it to the same folder, then copy your Data/ folder (settings, models, recordings) from the old version to the new one.",
+    "portableUpdateButton": "Open GitHub Releases"
   },
   "common": {
     "loading": "読み込み中...",
@@ -428,13 +585,28 @@
     "dismiss": "閉じる"
   },
   "errors": {
-    "loadDirectory": "ディレクトリの読み込みエラー: {{error}}"
+    "loadDirectory": "ディレクトリの読み込みエラー: {{error}}",
+    "micPermissionDeniedTitle": "マイクへのアクセスが拒否されました",
+    "micPermissionDenied": {
+      "generic": "オペレーティングシステムによりマイクへのアクセスが拒否されました。システム設定でマイクの許可を付与してください。",
+      "windows": "設定 → プライバシーとセキュリティ → マイク（デスクトップアプリのアクセスを含む）でマイクへのアクセスを有効にしてください。",
+      "macos": "システム設定 → プライバシーとセキュリティ → マイクでマイクへのアクセスを許可してください。",
+      "linux": "システムのサウンドまたはプライバシー設定でマイクへのアクセスを許可してください。"
+    },
+    "noInputDeviceTitle": "マイクが見つかりません",
+    "noInputDevice": "オーディオ入力デバイスが検出されませんでした。マイクまたはヘッドセットを接続してから再試行してください。",
+    "recordingFailed": "録音の開始に失敗しました: {{error}}",
+    "modelLoadFailed": "モデルの読み込みに失敗しました: {{model}}",
+    "modelLoadFailedUnknown": "不明なモデル",
+    "pasteFailedTitle": "テキストの貼り付けに失敗しました",
+    "pasteFailed": "アクティブなアプリケーションにテキストを貼り付けられませんでした。"
   },
   "appLanguage": {
     "title": "アプリケーション言語",
     "description": "Handyインターフェースの言語を変更"
   },
   "overlay": {
-    "transcribing": "文字起こし中..."
+    "transcribing": "文字起こし中...",
+    "processing": "処理中..."
   }
 }
