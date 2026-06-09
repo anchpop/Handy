@@ -72,8 +72,16 @@ export const ClamshellModeSection: React.FC<ClamshellModeSectionProps> =
 
     // Candidate fallback mics: real devices other than the built-in (and not the
     // synthetic "Default" entry, which would map back to "disabled").
+    // iPhone (Continuity) mics are sorted to the bottom — they're frequently
+    // out of range/asleep — so they're never the default pick. sort() is stable,
+    // so the original device order is preserved within each group.
+    const isIphoneMicName = (name: string): boolean => /iphone/i.test(name);
     const fallbackOptions = audioDevices
       .filter((d) => d.name !== "Default" && !isBuiltinMicName(d.name))
+      .sort(
+        (a, b) =>
+          Number(isIphoneMicName(a.name)) - Number(isIphoneMicName(b.name)),
+      )
       .map((d) => ({ value: d.name, label: d.name }));
     const noFallbackAvailable = fallbackOptions.length === 0;
 

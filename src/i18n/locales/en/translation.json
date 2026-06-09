@@ -231,7 +231,7 @@
         },
         "device": {
           "title": "Fallback microphone",
-          "description": "The microphone to use while in clamshell mode."
+          "description": "The microphone to use while in clamshell mode. iPhone (Continuity) mics are listed last since they're often unavailable."
         },
         "noFallback": "No other microphone is available to fall back to."
       },
